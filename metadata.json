@@ -1,0 +1,5 @@
+{
+  "name": "Nexus 3D Knowledge Graph",
+  "description": "A high-fidelity 3D knowledge base using Three.js for visualization and SurrealDB graph logic for complex multi-dimensional data relationships, assisted by Gemini Pro.",
+  "requestFramePermissions": []
+}
