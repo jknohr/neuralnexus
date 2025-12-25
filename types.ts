@@ -9,9 +9,9 @@ export interface NodeSchema {
   color: string;
   defaultEdge: string;
   allowedEdges: string[];
-  zAxis: AxisPreference;
-  xAxis: AxisPreference;
-  yAxis: AxisPreference;
+  flow_z: AxisPreference;
+  flow_x: AxisPreference;
+  flow_y: AxisPreference;
   nature: NodeNature;
 }
 
@@ -34,7 +34,7 @@ export interface GraphNode {
   summary: string;
   content: string;
   type: string;
-  val: number; 
+  val: number;
   color: string;
   x?: number;
   y?: number;

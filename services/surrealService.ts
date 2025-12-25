@@ -19,10 +19,10 @@ const ROOT_NS = 'neuralnexus';
 const ORG_DB = 'neuralindex'; // Global management database
 
 const DEFAULT_NODE_SCHEMA: NodeSchema[] = [
-  { type: 'category', nature: 'child', description: 'Structural blocks defining knowledge domains.', color: '#6366f1', defaultEdge: 'CHILD_OF', allowedEdges: ['CHILD_OF', 'RELATED_TO'], zAxis: 'neutral', xAxis: 'free', yAxis: 'positive' },
-  { type: 'article', nature: 'sub', description: 'Detailed knowledge carriers with rich content.', color: '#38bdf8', defaultEdge: 'CHILD_OF', allowedEdges: ['CHILD_OF', 'REFERENCES', 'DEPENDS_ON'], zAxis: 'positive', xAxis: 'free', yAxis: 'negative' },
-  { type: 'concept', nature: 'sub', description: 'Abstract theories or semantic bridges.', color: '#a78bfa', defaultEdge: 'RELATED_TO', allowedEdges: ['RELATED_TO', 'REFERENCES'], zAxis: 'negative', xAxis: 'free', yAxis: 'free' },
-  { type: 'entity', nature: 'sub', description: 'Specific individuals, locations, or items.', color: '#fb7185', defaultEdge: 'REFERENCES', allowedEdges: ['REFERENCES'], zAxis: 'neutral', xAxis: 'positive', yAxis: 'free' }
+  { type: 'category', nature: 'child', description: 'Structural blocks defining knowledge domains.', color: '#6366f1', defaultEdge: 'CHILD_OF', allowedEdges: ['CHILD_OF', 'RELATED_TO'], flow_z: 'neutral', flow_x: 'free', flow_y: 'positive' },
+  { type: 'article', nature: 'sub', description: 'Detailed knowledge carriers with rich content.', color: '#38bdf8', defaultEdge: 'CHILD_OF', allowedEdges: ['CHILD_OF', 'REFERENCES', 'DEPENDS_ON'], flow_z: 'positive', flow_x: 'free', flow_y: 'negative' },
+  { type: 'concept', nature: 'sub', description: 'Abstract theories or semantic bridges.', color: '#a78bfa', defaultEdge: 'RELATED_TO', allowedEdges: ['RELATED_TO', 'REFERENCES'], flow_z: 'negative', flow_x: 'free', flow_y: 'free' },
+  { type: 'entity', nature: 'sub', description: 'Specific individuals, locations, or items.', color: '#fb7185', defaultEdge: 'REFERENCES', allowedEdges: ['REFERENCES'], flow_z: 'neutral', flow_x: 'positive', flow_y: 'free' }
 ];
 
 const DEFAULT_EDGE_SCHEMA: EdgeSchema[] = [
@@ -44,7 +44,7 @@ class SurrealService {
   async connect(config: SurrealConfig): Promise<boolean> {
     try {
       this.connected = false;
-      
+
       let connectionUrl = '';
       if (config.mode === 'cloud') {
         const cleanHost = (config.hostname || '').replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').replace(/\/rpc$/, '');
@@ -55,13 +55,13 @@ class SurrealService {
       }
 
       if (this.db) {
-        try { await this.db.close(); } catch(e) {}
+        try { await this.db.close(); } catch (e) { }
       }
       this.db = new Surreal();
 
       // Establish connection first
       await this.db.connect(connectionUrl);
-      
+
       // Perform authentication
       if (config.mode === 'cloud' && config.authToken) {
         await this.db.authenticate(config.authToken);
@@ -71,7 +71,7 @@ class SurrealService {
 
       // Select target scope
       await this.db.use({ namespace: ROOT_NS, database: ORG_DB });
-      
+
       // Bootstrap core structures one by one to avoid halting on existing field errors
       const definitions = [
         "DEFINE TABLE IF NOT EXISTS project SCHEMAFULL;",
@@ -114,7 +114,7 @@ class SurrealService {
 
   async createProject(name: string): Promise<string> {
     if (!this.connected) throw new Error("Not connected to SurrealDB");
-    
+
     const sanitizedName = name.toLowerCase().replace(/[^a-z0-9_]/g, '_');
 
     // 1. Register in Global Index
@@ -123,7 +123,7 @@ class SurrealService {
 
     // 2. Initialize the Project Database and create Foundational Node
     await this.db.use({ namespace: ROOT_NS, database: sanitizedName });
-    
+
     await this.db.create('node', {
       id: `node:root`,
       title: name,
@@ -141,41 +141,41 @@ class SurrealService {
 
   async fetchGraphData(projectName: string): Promise<GraphData> {
     if (!this.connected || !projectName) return { nodes: [], links: [], nodeSchema: DEFAULT_NODE_SCHEMA, edgeSchema: DEFAULT_EDGE_SCHEMA };
-    
+
     try {
-        await this.db.use({ namespace: ROOT_NS, database: ORG_DB });
-        const schemaResponses: any = await this.db.query(`
+      await this.db.use({ namespace: ROOT_NS, database: ORG_DB });
+      const schemaResponses: any = await this.db.query(`
             SELECT * FROM node_schema;
             SELECT * FROM edge_schema;
         `);
-        
-        const nodeSchema = schemaResponses[0]?.result || [];
-        const edgeSchema = schemaResponses[1]?.result || [];
 
-        this.currentProjectDB = projectName;
-        await this.db.use({ namespace: ROOT_NS, database: projectName });
-        
-        const dataResponses: any = await this.db.query(`
+      const nodeSchema = schemaResponses[0]?.result || [];
+      const edgeSchema = schemaResponses[1]?.result || [];
+
+      this.currentProjectDB = projectName;
+      await this.db.use({ namespace: ROOT_NS, database: projectName });
+
+      const dataResponses: any = await this.db.query(`
             SELECT * FROM node;
             SELECT * FROM edge;
         `);
 
-        const nodes = dataResponses[0]?.result || [];
-        const linksRaw = dataResponses[1]?.result || [];
+      const nodes = dataResponses[0]?.result || [];
+      const linksRaw = dataResponses[1]?.result || [];
 
-        return {
-          nodes,
-          links: linksRaw.map((l: any) => ({
-            ...l, 
-            source: typeof l.source === 'string' ? l.source : (l.source?.id || l.source),
-            target: typeof l.target === 'string' ? l.target : (l.target?.id || l.target)
-          })),
-          nodeSchema: nodeSchema.length ? nodeSchema : DEFAULT_NODE_SCHEMA,
-          edgeSchema: edgeSchema.length ? edgeSchema : DEFAULT_EDGE_SCHEMA
-        };
+      return {
+        nodes,
+        links: linksRaw.map((l: any) => ({
+          ...l,
+          source: typeof l.source === 'string' ? l.source : (l.source?.id || l.source),
+          target: typeof l.target === 'string' ? l.target : (l.target?.id || l.target)
+        })),
+        nodeSchema: nodeSchema.length ? nodeSchema : DEFAULT_NODE_SCHEMA,
+        edgeSchema: edgeSchema.length ? edgeSchema : DEFAULT_EDGE_SCHEMA
+      };
     } catch (e) {
-        console.error("Nexus: Failed to fetch graph data:", e);
-        return { nodes: [], links: [], nodeSchema: DEFAULT_NODE_SCHEMA, edgeSchema: DEFAULT_EDGE_SCHEMA };
+      console.error("Nexus: Failed to fetch graph data:", e);
+      return { nodes: [], links: [], nodeSchema: DEFAULT_NODE_SCHEMA, edgeSchema: DEFAULT_EDGE_SCHEMA };
     }
   }
 
