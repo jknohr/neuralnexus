@@ -90,6 +90,30 @@ INSERT INTO node_archtype CONTENT [
         flow_z: "positive",
         flow_x: "free",
         flow_y: "negative"
+    },
+    {
+        type: "article",
+        nature: "child",
+        description: "Detailed written content and structural container.",
+        color: "#38bdf8",
+        defaultEdge: "CHILD_OF",
+        allowedChildNodes: ["topic", "concept"], // Upgraded to allow children
+        allowedSubNodes: ["source", "file"],
+        flow_z: "positive",
+        flow_x: "free",
+        flow_y: "negative"
+    },
+    {
+        type: "paper",
+        nature: "child",
+        description: "Academic or technical paper.",
+        color: "#94a3b8",
+        defaultEdge: "CHILD_OF",
+        allowedChildNodes: ["topic", "concept"],
+        allowedSubNodes: ["taxonomy", "conceptualframework", "concept", "mentalmodel", "principle", "law", "controversy", "misconception", "methodology", "epistemicfoundation", "analyticaltechnique", "bestpractice", "pitfall", "discovery", "technology", "source"],
+        flow_z: "positive",
+        flow_x: "free",
+        flow_y: "negative"
     }
 ];
 `;

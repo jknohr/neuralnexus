@@ -12,6 +12,6 @@ DEFINE FIELD description ON TABLE edge_taxonomy TYPE string;
 DEFINE FIELD color ON TABLE edge_taxonomy TYPE string;
 
 -- Indexes for performance
-DEFINE INDEX type_idx ON TABLE edge_taxonomy COLUMNS type UNIQUE;
+DEFINE INDEX type_idx ON TABLE edge_taxonomy COLUMNS type;
 DEFINE INDEX nature_idx ON TABLE edge_taxonomy COLUMNS nature;
 `;

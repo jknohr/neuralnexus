@@ -7,6 +7,10 @@ DEFINE FIELD name ON TABLE project TYPE string;
 DEFINE FIELD database_name ON TABLE project TYPE string;
 DEFINE FIELD description ON TABLE project TYPE string;
 
+-- Media Storage (Per-Project)
+DEFINE FIELD b2_bucket_id ON TABLE project TYPE string;
+DEFINE FIELD b2_bucket_name ON TABLE project TYPE string;
+
 -- =========================================================
 -- LOCAL SCHEMA OVERRIDES (Stored in System DB)
 -- These MUST adhere to the strict specific structures of 

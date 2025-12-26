@@ -18,11 +18,9 @@ DEFINE FIELD flow_z ON TABLE node_archtype TYPE string ASSERT $value INSIDE ['po
 DEFINE FIELD flow_x ON TABLE node_archtype TYPE string ASSERT $value INSIDE ['positive', 'negative', 'neutral', 'free'];
 DEFINE FIELD flow_y ON TABLE node_archtype TYPE string ASSERT $value INSIDE ['positive', 'negative', 'neutral', 'free'];
 
--- Vector Embeddings
-DEFINE FIELD embedding ON TABLE node_archtype TYPE array<float>;
+-- Note: Embeddings are stored on 'node' table (content instances), not 'node_archtype' (type definitions)
 
 -- Indexes
 DEFINE INDEX type_idx ON TABLE node_archtype COLUMNS type UNIQUE;
 DEFINE INDEX nature_idx ON TABLE node_archtype COLUMNS nature;
-DEFINE INDEX idx_embedding ON node_archtype COLUMNS embedding SEARCH VECTOR;
 `;

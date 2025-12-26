@@ -45,13 +45,13 @@ export * from './settings_schema';
 // It also acts as the central repository for Local Project Definitions 
 // (stored in the 'project' table's 'local_definitions' field) for indexing purposes.
 // ==================================================================================
-export const NEURALINDEX_DB_SCHEMA = \`
+export const NEURALINDEX_DB_SCHEMA = `
 -- Global Settings (API Keys, UI Preferences)
-\${settingsSchema}
+${settingsSchema}
 
 -- Project Registry (Index of Projects & Local Definition Storage)
-\${projectSchema}
-\`;
+${projectSchema}
+`;
 
 
 // ==================================================================================
@@ -61,26 +61,26 @@ export const NEURALINDEX_DB_SCHEMA = \`
 // It establishes the Graph Structure (Archetypes/Taxonomies) and the Content Tables (Nodes/Edges).
 // It also seeds the "Standard Library" of global types.
 // ==================================================================================
-export const PROJECT_DB_SCHEMA = \`
+export const PROJECT_DB_SCHEMA = `
 -- A. Structure Tables (The 'Rules' of the Graph)
-\${nodeArchtypeSchema}            -- Defines 'TABLE node_archtype'
-\${edgeTaxonomySchema}            -- Defines 'TABLE edge_taxonomy'
+${nodeArchtypeSchema}            -- Defines 'TABLE node_archtype'
+${edgeTaxonomySchema}            -- Defines 'TABLE edge_taxonomy'
 
 -- B. Content Tables (The 'Data' of the Graph)
-\${nodeSchema}                    -- Defines 'TABLE node' (Standard Content Node)
-\${edgeSchema}                    -- Defines 'TABLE edge' (Blueprint for Edge Tables)
+${nodeSchema}                    -- Defines 'TABLE node' (Standard Content Node)
+${edgeSchema}                    -- Defines 'TABLE edge' (Blueprint for Edge Tables)
 
 -- C. Indexes (Optimization)
-\${nodeArchtypeChildIndexSchema}
-\${nodeArchtypeSubIndexSchema}
-\${edgeTaxonomyChildIndexSchema}
-\${edgeTaxonomySubIndexSchema}
-\${edgeTaxonomyLinkIndexSchema}
+${nodeArchtypeChildIndexSchema}
+${nodeArchtypeSubIndexSchema}
+${edgeTaxonomyChildIndexSchema}
+${edgeTaxonomySubIndexSchema}
+${edgeTaxonomyLinkIndexSchema}
 
 -- D. Bootstrap Data (Seed Global Defaults)
-\${nodeArchtypeChildIndexData}    -- Inserts Standard Child Nodes
-\${nodeArchtypeSubIndexData}      -- Inserts Standard Sub Nodes
-\${edgeTaxonomyChildIndexData}    -- Inserts Standard Child Edges
-\${edgeTaxonomySubIndexData}      -- Inserts Standard Sub Edges
-\${edgeTaxonomyLinkIndexData}     -- Inserts Standard Link Edges
-\`;
+${nodeArchtypeChildIndexData}    -- Inserts Standard Child Nodes
+${nodeArchtypeSubIndexData}      -- Inserts Standard Sub Nodes
+${edgeTaxonomyChildIndexData}    -- Inserts Standard Child Edges
+${edgeTaxonomySubIndexData}      -- Inserts Standard Sub Edges
+${edgeTaxonomyLinkIndexData}     -- Inserts Standard Link Edges
+`;

@@ -2,60 +2,77 @@
 import { GoogleGenAI, Type } from "@google/genai";
 // Removed non-existent EdgeTable import causing compilation error
 import { GraphNode } from "../types";
+import { mediaBucket } from "./backblaze_mediabucket";
 
-// Initialize GoogleGenAI using the exact pattern required by the SDK guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-export const generateNodePackage = async (title: string, parentContext?: string) => {
-  const prompt = `Create a comprehensive knowledge node for "${title}". 
-  Context: Part of a graph branching from ${parentContext || 'Root'}.
-  Return detailed content in Markdown, a concise summary, and suggest related topics with specific relationship types.
-  Relationship types available: CHILD_OF, REFERENCES, RELATED_TO, DEPENDS_ON.`;
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          summary: { type: Type.STRING },
-          content: { type: Type.STRING },
-          type: { type: Type.STRING, enum: ['category', 'article', 'concept', 'entity'] },
-          suggestedLinks: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING },
-                table: { type: Type.STRING, enum: ['CHILD_OF', 'REFERENCES', 'RELATED_TO', 'DEPENDS_ON'] },
-                reason: { type: Type.STRING }
-              },
-              required: ['title', 'table']
-            }
-          }
-        },
-        required: ['summary', 'content', 'type', 'suggestedLinks']
-      }
-    }
-  });
-
-  // Extract text from GenerateContentResponse using the .text property as per guidelines
-  const jsonStr = response.text;
-  if (!jsonStr) {
-    throw new Error("Gemini API returned an empty response");
-  }
-  return JSON.parse(jsonStr.trim());
-};
+// Initialize GoogleGenAI
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
 
 /**
- * Simulates generating a vector embedding using Gemini's knowledge.
- * In a real SurrealDB environment, you'd use a dedicated embedding model.
+ * Generates a multimodal vector embedding using Gemini's `multimodal-embedding-001` model.
+ * Consumes the Node's text content AND any attached images.
  */
+export const getMultimodalEmbedding = async (node: GraphNode): Promise<number[] | null> => {
+  try {
+    const parts: any[] = [];
+
+    // 1. Text Content
+    if (node.content && node.content.trim()) {
+      parts.push({ text: node.title + "\n" + node.summary + "\n" + node.content });
+    }
+
+    // 2. Image/Video Content (Fetch from B2)
+    if (node.media && node.media.length > 0) {
+      for (const item of node.media) {
+        if (item.url && (item.type === 'image' || item.type === 'video')) {
+          // Filter for supported formats if strictly needed, but Gemini is flexible.
+          // User said "webm PICTURES" - usually means WebP images or WebM video.
+          // We accept both.
+          try {
+            const buffer = await mediaBucket.downloadMedia(item.url);
+            if (!buffer) continue;
+
+            const base64 = btoa(new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+
+            parts.push({
+              inlineData: {
+                mimeType: item.mimeType || (item.type === 'video' ? "video/webm" : "image/webp"),
+                data: base64
+              }
+            });
+          } catch (e) {
+            console.warn(`Failed to fetch media for embedding: ${item.url}`, e);
+          }
+        }
+      }
+    }
+
+    if (parts.length === 0) return null;
+
+    const response = await ai.models.embedContent({
+      model: 'multimodal-embedding-001',
+      contents: [{ parts: parts }]
+    });
+
+    // SDK Response fix: The type definition might imply batch response structure or specific version difference.
+    // We safely access embedding or embeddings.
+    const respAny = response as any;
+    const values = respAny.embedding?.values || respAny.embeddings?.[0]?.values;
+    return values || null;
+  } catch (e) {
+    console.error("Gemini Multimodal Embedding Failed:", e);
+    return null; // Fail gracefully
+  }
+};
+
+// Stub for build compatibility
+export const generateNodePackage = async (title: string, parentContext?: string): Promise<any> => {
+  throw new Error("Generation features are currently disabled. Focus on Embedding Pipeline.");
+};
+
+// Legacy text-only shim (deprecated)
 export const getVectorEmbedding = async (text: string): Promise<number[]> => {
-    // Simulated vector dimension
-    const size = 128;
-    const seed = text.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return Array.from({ length: size }, (_, i) => Math.sin(seed + i) * 0.5 + 0.5);
+  // Forward to multimodal handler with a dummy node wrapper
+  const dummyNode: any = { content: text, title: '', summary: '', media: [] };
+  const result = await getMultimodalEmbedding(dummyNode);
+  return result || [];
 };

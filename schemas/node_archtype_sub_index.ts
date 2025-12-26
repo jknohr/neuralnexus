@@ -199,30 +199,8 @@ INSERT INTO node_archtype CONTENT [
         flow_x: "free",
         flow_y: "negative"
     },
-    {
-        type: "article",
-        nature: "sub",
-        description: "Detailed written content.",
-        color: "#38bdf8",
-        defaultEdge: "CHILD_OF",
-        allowedChildNodes: [],
-        allowedSubNodes: ["source"],
-        flow_z: "positive",
-        flow_x: "free",
-        flow_y: "negative"
-    },
-    {
-        type: "paper",
-        nature: "sub",
-        description: "Academic or technical paper.",
-        color: "#94a3b8",
-        defaultEdge: "CHILD_OF",
-        allowedChildNodes: [],
-        allowedSubNodes: ["taxonomy", "conceptualframework", "concept", "mentalmodel", "principle", "law", "controversy", "misconception", "methodology", "epistemicfoundation", "analyticaltechnique", "bestpractice", "pitfall", "discovery", "technology", "source"],
-        flow_z: "positive",
-        flow_x: "free",
-        flow_y: "negative"
-    },
+
+
     
     // Repo Subtypes
     {

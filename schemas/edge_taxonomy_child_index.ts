@@ -18,10 +18,18 @@ INSERT INTO edge_taxonomy CONTENT [
     {
         type: "RELATIONAL",
         nature: "child",
-        sourcetype: "HAS_PART",
-        destinationtype: "PART_OF",
-        description: "Component relationships.",
-        color: "#818cf8"
+        sourcetype: "GOVERNS",
+        destinationtype: "SUBSIDIARY_OF",
+        description: "Organizational hierarchy (e.g. Org -> Org).",
+        color: "#7c3aed"
+    },
+    {
+        type: "RELATIONAL",
+        nature: "child",
+        sourcetype: "ENCOMPASSES",
+        destinationtype: "PUBLISHED_IN",
+        description: "Knowledge domain containment (e.g. Domain/Field -> Article/Paper).",
+        color: "#0ea5e9"
     }
 ];
 `;

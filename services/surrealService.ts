@@ -1,6 +1,7 @@
 
 import { Surreal } from 'surrealdb';
 import { GraphData, GraphNode, GraphEdge, NodeSchema, EdgeSchema } from '../types';
+import { NEURALINDEX_DB_SCHEMA, PROJECT_DB_SCHEMA } from '../schemas/project_schema_index';
 
 export interface SurrealConfig {
   mode: 'local' | 'cloud';
@@ -17,20 +18,6 @@ export interface SurrealConfig {
 // Architecture Alignment
 const ROOT_NS = 'neuralnexus';
 const ORG_DB = 'neuralindex'; // Global management database
-
-const DEFAULT_NODE_SCHEMA: NodeSchema[] = [
-  { type: 'category', nature: 'child', description: 'Structural blocks defining knowledge domains.', color: '#6366f1', defaultEdge: 'CHILD_OF', allowedEdges: ['CHILD_OF', 'RELATED_TO'], flow_z: 'neutral', flow_x: 'free', flow_y: 'positive' },
-  { type: 'article', nature: 'sub', description: 'Detailed knowledge carriers with rich content.', color: '#38bdf8', defaultEdge: 'CHILD_OF', allowedEdges: ['CHILD_OF', 'REFERENCES', 'DEPENDS_ON'], flow_z: 'positive', flow_x: 'free', flow_y: 'negative' },
-  { type: 'concept', nature: 'sub', description: 'Abstract theories or semantic bridges.', color: '#a78bfa', defaultEdge: 'RELATED_TO', allowedEdges: ['RELATED_TO', 'REFERENCES'], flow_z: 'negative', flow_x: 'free', flow_y: 'free' },
-  { type: 'entity', nature: 'sub', description: 'Specific individuals, locations, or items.', color: '#fb7185', defaultEdge: 'REFERENCES', allowedEdges: ['REFERENCES'], flow_z: 'neutral', flow_x: 'positive', flow_y: 'free' }
-];
-
-const DEFAULT_EDGE_SCHEMA: EdgeSchema[] = [
-  { type: 'CHILD_OF', description: 'Strict hierarchical parent-child relation.', color: '#6366f1', label: 'Parent-Child', behavior: 'child' },
-  { type: 'REFERENCES', description: 'Associative citation or mention.', color: '#10b981', label: 'Referential', behavior: 'link' },
-  { type: 'RELATED_TO', description: 'Horizontal semantic relationship.', color: '#f59e0b', label: 'Associative', behavior: 'link' },
-  { type: 'DEPENDS_ON', description: 'Functional prerequisite requirement.', color: '#ef4444', label: 'Prerequisite', behavior: 'link' }
-];
 
 class SurrealService {
   private db: Surreal;
@@ -72,21 +59,14 @@ class SurrealService {
       // Select target scope
       await this.db.use({ namespace: ROOT_NS, database: ORG_DB });
 
-      // Bootstrap core structures one by one to avoid halting on existing field errors
-      const definitions = [
-        "DEFINE TABLE IF NOT EXISTS project SCHEMAFULL;",
-        "DEFINE FIELD IF NOT EXISTS name ON TABLE project TYPE string;",
-        "DEFINE FIELD IF NOT EXISTS created_at ON TABLE project TYPE datetime DEFAULT time::now();",
-        "DEFINE TABLE IF NOT EXISTS node_schema SCHEMAFULL;",
-        "DEFINE TABLE IF NOT EXISTS edge_schema SCHEMAFULL;"
-      ];
-
-      for (const query of definitions) {
-        try {
-          await this.db.query(query);
-        } catch (e) {
-          // Quietly ignore "already exists" errors during bootstrap
-        }
+      // Bootstrap NEURALINDEX (System DB)
+      // We run the full schema definition. SurrealDB handles idempotency for definitions fairly well,
+      // but to be safe/clean we might want to wrap in try/catch or assume it's okay.
+      // The schema string contains many statements.
+      try {
+        await this.db.query(NEURALINDEX_DB_SCHEMA);
+      } catch (e) {
+        console.warn("Nexus: Warning during NeuralIndex bootstrap (might be existing definitions):", e);
       }
 
       this.connected = true;
@@ -102,7 +82,6 @@ class SurrealService {
     if (!this.connected) return [];
     try {
       await this.db.use({ namespace: ROOT_NS, database: ORG_DB });
-      // Updated query to use specific idiom selection for name to avoid parse errors in some SDK versions
       const responses: any = await this.db.query('SELECT name FROM project ORDER BY created_at;');
       const projectRecords = responses[0]?.result || [];
       return projectRecords.map((p: any) => p.name);
@@ -117,79 +96,159 @@ class SurrealService {
 
     const sanitizedName = name.toLowerCase().replace(/[^a-z0-9_]/g, '_');
 
-    // 1. Register in Global Index
-    await this.db.use({ namespace: ROOT_NS, database: ORG_DB });
-    await this.db.query('CREATE project SET name = $name, created_at = time::now();', { name: sanitizedName });
+    // 1. Create Backblaze Bucket
+    let bucketId = null;
+    let bucketName = `neuralnexus-${sanitizedName}-${crypto.randomUUID().split('-')[0]}`.toLowerCase();
 
-    // 2. Initialize the Project Database and create Foundational Node
+    try {
+      const { mediaBucket } = await import('./backblaze_mediabucket');
+      const bucketInfo = await mediaBucket.createBucket(bucketName);
+      if (bucketInfo) {
+        bucketId = bucketInfo.bucketId;
+      } else {
+        console.warn("Nexus: Failed to create B2 bucket, proceeding without storage.");
+      }
+    } catch (e) {
+      console.error("Nexus: B2 Bucket creation error:", e);
+    }
+
+    // 2. Register in Global Index
+    await this.db.use({ namespace: ROOT_NS, database: ORG_DB });
+    await this.db.query('CREATE project SET name = $name, b2_bucket_id = $bid, b2_bucket_name = $bname, created_at = time::now();', {
+      name: sanitizedName,
+      bid: bucketId,
+      bname: bucketName
+    });
+
+    // 2. Initialize the Project Database
     await this.db.use({ namespace: ROOT_NS, database: sanitizedName });
 
+    // Apply Project Schema (Architecture & Content Tables)
+    await this.db.query(PROJECT_DB_SCHEMA);
+
+    // Create Root Node
     await this.db.create('node', {
-      id: `node:root`,
+      type: 'topic', // Using 'topic' as root usually fits well, or 'domain'
       title: name,
       summary: `The central nexus of the ${name} knowledge project.`,
-      content: `# ${name}\n\nWelcome to your new knowledge project. Begin expanding by right-clicking nodes or using the expand tools.`,
-      type: 'category',
+      content: `# ${name}\n\nWelcome to your new knowledge project.`,
       val: 24,
       color: '#6366f1',
-      x: 0, y: 0, z: 0
-    });
+      // Coordinates can be left to default or flexible
+      data: { root: true }
+    } as any);
 
     this.currentProjectDB = sanitizedName;
     return sanitizedName;
   }
 
   async fetchGraphData(projectName: string): Promise<GraphData> {
-    if (!this.connected || !projectName) return { nodes: [], links: [], nodeSchema: DEFAULT_NODE_SCHEMA, edgeSchema: DEFAULT_EDGE_SCHEMA };
+    if (!this.connected || !projectName) return { nodes: [], links: [], nodeSchema: [], edgeSchema: [] };
 
     try {
-      await this.db.use({ namespace: ROOT_NS, database: ORG_DB });
-      const schemaResponses: any = await this.db.query(`
-            SELECT * FROM node_schema;
-            SELECT * FROM edge_schema;
-        `);
-
-      const nodeSchema = schemaResponses[0]?.result || [];
-      const edgeSchema = schemaResponses[1]?.result || [];
-
       this.currentProjectDB = projectName;
+
+      // 0. Load Project Config from Global Index (to get Bucket ID)
+      await this.db.use({ namespace: ROOT_NS, database: ORG_DB });
+      const projectQuery: any = await this.db.query('SELECT * FROM project WHERE name = $name', { name: projectName });
+      const projectRecord = projectQuery[0]?.result[0];
+
+      if (projectRecord && projectRecord.b2_bucket_id) {
+        // Import mediaBucket only when needed to avoid circular div or just use global
+        const { mediaBucket } = await import('./backblaze_mediabucket');
+        mediaBucket.setBucket(projectRecord.b2_bucket_id);
+      }
+
+      // 1. Switch to Project DB
       await this.db.use({ namespace: ROOT_NS, database: projectName });
 
-      const dataResponses: any = await this.db.query(`
+      // Fetch Schema (Architecture) and Content
+      // Update table names: node_schema -> node_archtype, edge_schema -> edge_taxonomy
+      const responses: any = await this.db.query(`
+            SELECT * FROM node_archtype;
+            SELECT * FROM edge_taxonomy;
             SELECT * FROM node;
             SELECT * FROM edge;
         `);
 
-      const nodes = dataResponses[0]?.result || [];
-      const linksRaw = dataResponses[1]?.result || [];
+      const nodeSchemaRaw = responses[0]?.result || [];
+      const edgeSchemaRaw = responses[1]?.result || [];
+      const nodes = responses[2]?.result || [];
+      const linksRaw = responses[3]?.result || [];
+
+      // Map raw DB results to Types
+      const nodeSchema: NodeSchema[] = nodeSchemaRaw;
+      const edgeSchema: EdgeSchema[] = edgeSchemaRaw;
+
+      // Process Links
+      const links = linksRaw.map((l: any) => ({
+        id: l.id,
+        source: typeof l.in === 'string' ? l.in : (l.in?.id || l.in), // Surreal uses 'in'/'out' for edges
+        target: typeof l.out === 'string' ? l.out : (l.out?.id || l.out),
+        type: l.type,
+        nature: l.nature,
+        strength: l.strength || 1,
+        weight: l.weight || 1,
+        data: l.data,
+        metadata: l.metadata
+      }));
+
+      // Process Nodes (ensure ID is string)
+      const processedNodes = nodes.map((n: any) => ({
+        ...n,
+        id: n.id,
+      }));
 
       return {
-        nodes,
-        links: linksRaw.map((l: any) => ({
-          ...l,
-          source: typeof l.source === 'string' ? l.source : (l.source?.id || l.source),
-          target: typeof l.target === 'string' ? l.target : (l.target?.id || l.target)
-        })),
-        nodeSchema: nodeSchema.length ? nodeSchema : DEFAULT_NODE_SCHEMA,
-        edgeSchema: edgeSchema.length ? edgeSchema : DEFAULT_EDGE_SCHEMA
+        nodes: processedNodes,
+        links,
+        nodeSchema,
+        edgeSchema
       };
     } catch (e) {
       console.error("Nexus: Failed to fetch graph data:", e);
-      return { nodes: [], links: [], nodeSchema: DEFAULT_NODE_SCHEMA, edgeSchema: DEFAULT_EDGE_SCHEMA };
+      return { nodes: [], links: [], nodeSchema: [], edgeSchema: [] };
     }
   }
 
   async createNode(node: any): Promise<void> {
     await this.db.use({ namespace: ROOT_NS, database: this.currentProjectDB });
-    await this.db.create('node', node as any);
+    await this.db.create('node', node);
   }
 
-  async relate(source: string, target: string, table: string): Promise<void> {
+  async relate(source: string, target: string, type: string, nature: string): Promise<void> {
     await this.db.use({ namespace: ROOT_NS, database: this.currentProjectDB });
-    await this.db.query(`
-      RELATE ${source}->edge->${target} 
-      SET table = $table, strength = 1.0;
-    `, { table });
+
+    // RELATE logic per edge_schema.ts:
+    // - 'type' is the edge taxonomy type (e.g., CHILD_OF, RELATED_TO)
+    // - 'nature' is the category ('child', 'sub', 'link')
+    // - 'sourcetype'/'destinationtype' store direction labels for bidirectional semantics
+
+    try {
+      // Look up the edge taxonomy to get direction labels
+      const taxonomyQuery: any = await this.db.query(
+        'SELECT sourcetype, destinationtype FROM edge_taxonomy WHERE sourcetype = $type OR destinationtype = $type LIMIT 1;',
+        { type }
+      );
+      const taxonomy = taxonomyQuery[0]?.result?.[0];
+
+      await this.db.query(`
+        RELATE ${source}->edge->${target} 
+        SET type = $type, 
+            nature = $nature,
+            sourcetype = $srctype,
+            destinationtype = $dsttype,
+            created_at = time::now();
+      `, {
+        type,
+        nature,
+        srctype: taxonomy?.sourcetype || type,
+        dsttype: taxonomy?.destinationtype || type
+      });
+    } catch (e) {
+      console.error("Nexus: Relationship Creation Failed", e);
+      throw e;
+    }
   }
 
   async deleteNode(id: string): Promise<void> {
@@ -198,14 +257,65 @@ class SurrealService {
   }
 
   async updateSchema(nodeSchema: NodeSchema[], edgeSchema: EdgeSchema[]): Promise<void> {
-    await this.db.use({ namespace: ROOT_NS, database: ORG_DB });
-    await this.db.query('DELETE node_schema; DELETE edge_schema;');
-    for (const ns of nodeSchema) await this.db.create('node_schema', ns as any);
-    for (const es of edgeSchema) await this.db.create('edge_schema', es as any);
+    if (!this.connected) return;
+    try {
+      this.currentProjectDB = this.currentProjectDB || 'neuralnexus_dev';
+      await this.db.use({ namespace: ROOT_NS, database: this.currentProjectDB });
+
+      // 1. Clear existing schema definitions
+      // Note: In SurrealDB, DELETE table deletes all records in the table
+      await this.db.delete('node_archtype');
+      await this.db.delete('edge_taxonomy');
+
+      // 2. Insert new definitions
+      if (nodeSchema.length > 0) {
+        await this.db.insert('node_archtype', nodeSchema as any);
+      }
+      if (edgeSchema.length > 0) {
+        await this.db.insert('edge_taxonomy', edgeSchema as any);
+      }
+    } catch (e) {
+      console.error("Nexus: Failed to update schema:", e);
+      throw e;
+    }
+  }
+
+
+
+  /**
+   * Execute a raw SurrealQL query with optional variables.
+   * Used for vector search and complex queries.
+   */
+  async query<T = any>(sql: string, vars?: Record<string, any>): Promise<T[]> {
     await this.db.use({ namespace: ROOT_NS, database: this.currentProjectDB });
+    try {
+      const result = await this.db.query(sql, vars);
+      // SurrealDB query returns array of results per statement
+      // We flatten and return first result set
+      if (Array.isArray(result) && result.length > 0) {
+        return result[0] as T[];
+      }
+      return [];
+    } catch (e) {
+      console.error('Nexus: Query failed:', e);
+      throw e;
+    }
   }
 
   isConnected() { return this.connected; }
+  async updateNodeField(id: string, field: string, value: any): Promise<void> {
+    await this.updateNodeFields(id, { [field]: value });
+  }
+
+  async updateNodeFields(id: string, fields: Partial<any>): Promise<void> {
+    await this.db.use({ namespace: ROOT_NS, database: this.currentProjectDB });
+    try {
+      await this.db.merge(id, fields);
+    } catch (e) {
+      console.error(`Nexus: Failed to update node ${id}`, e);
+      throw e;
+    }
+  }
 }
 
 export const surrealService = new SurrealService();
