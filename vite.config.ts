@@ -9,10 +9,12 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
-      headers: {
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-        'Cross-Origin-Opener-Policy': 'same-origin',
-      }
+      // Note: COOP/COEP headers removed - they block WebSocket connections to external services
+      // If you need SharedArrayBuffer for FFmpeg, consider using 'credentialless' instead:
+      // headers: {
+      //   'Cross-Origin-Embedder-Policy': 'credentialless',
+      //   'Cross-Origin-Opener-Policy': 'same-origin',
+      // }
     },
     plugins: [
       react(),
